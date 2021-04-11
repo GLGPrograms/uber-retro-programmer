@@ -61,6 +61,9 @@ static void flash_chip_disable(void) {
 }
 
 void flash_init(void) {
+	// Init info leds
+	DDRC |= _BV(4) | _BV(5);
+
 	// Shift, latch and set
 	PORTD &= ~ (_BV(5) | _BV(6) | _BV(7));
 	DDRD |= _BV(5) | _BV(6) | _BV(7);
@@ -162,11 +165,18 @@ static uint8_t flash_readcycle(uint32_t addr) {
 
 // assume only CE, and perform single cycle
 uint8_t flash_read(uint32_t addr) {
+	// turn on read led
+	PORTC |= _BV(4);
+
 	uint8_t data;
 	flash_read_init();
 	flash_setaddr(addr);
 	data = flash_databus_read();
 	flash_output_disable();
+
+	// turn off read led
+	PORTC &= ~_BV(4);
+	
 	return data;
 }
 
@@ -188,20 +198,52 @@ uint8_t data_polling(const uint8_t val) {
 
 // assume only CE, perform single cycle
 void flash_write(uint32_t addr, uint8_t data) {
+	// turn on write led
+	PORTC |= _BV(5);
+
 	flash_output_disable();
 	flash_databus_output(data);
 	flash_setaddr(addr);
 	flash_pulse_we();
 	data_polling(~data);
+
+	// turn off write led
+	PORTC &= ~_BV(5);
+}
+
+// assume only CE, perform whole cycle
+void flash_writen(uint32_t addr, uint8_t* data, uint32_t len) {
+	// turn on write led
+	PORTC |= _BV(5);
+
+	flash_output_disable();
+
+	flash_read_init();
+	do {
+		flash_databus_output(*(data));
+		flash_setaddr(addr++);
+		flash_pulse_we();
+		data_polling(~*data);
+		data++;
+	} while(--len);
+
+	// turn off write led
+	PORTC &= ~_BV(5);
 }
 
 void flash_readn(uint32_t addr, uint32_t len) {
+	// turn on read led
+	PORTC |= _BV(4);
+
 	flash_read_init();
 	do {
 		SEND(flash_readcycle(addr++));
 	} while(--len);
 	// safety features
 	flash_output_disable();
+
+	// turn off read led
+	PORTC &= ~_BV(4);
 }
 
 void flash_select_protocol(uint8_t allowed_protocols) {
