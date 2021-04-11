@@ -210,8 +210,6 @@ void op_opbuf_write(int fd, const uint32_t ba, const uint8_t* buf, const uint32_
     ba & 0xFF, (ba >> 8) & 0xFF, (ba >> 16) & 0xFF, // 24-bit addr, LE
   };
 
-  hexdump(header, sizeof(header));
-
   ret = write(fd, header, sizeof(header));
   if (ret < 0)
     longjmp(err, ret);
@@ -363,7 +361,7 @@ int main(int argc, char* argv[]) {
         if (optarg)
           g_log_level = atoi(optarg);
         else
-          g_log_level = INFO;
+          g_log_level = DEBUG;
         break;
 
       case 's':
@@ -515,7 +513,7 @@ int main(int argc, char* argv[]) {
     if (rd || vr) {
       op_read(fd, ba, rbuf, len);
 
-      // if (verbose)
+      if (g_log_level >= DEBUG)
         hexdump(rbuf, len);
 
       if (rd) save(rfile, rbuf, len);
