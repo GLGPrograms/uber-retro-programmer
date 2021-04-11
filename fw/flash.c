@@ -187,12 +187,12 @@ uint8_t data_polling(const uint8_t val) {
 }
 
 // assume only CE, perform single cycle
-uint8_t flash_write(uint32_t addr, uint8_t data) {
+void flash_write(uint32_t addr, uint8_t data) {
 	flash_output_disable();
 	flash_databus_output(data);
 	flash_setaddr(addr);
 	flash_pulse_we();
-	return data_polling(~data);
+	data_polling(~data);
 }
 
 void flash_readn(uint32_t addr, uint32_t len) {
