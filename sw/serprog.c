@@ -315,17 +315,30 @@ int main(int argc, char* argv[]) {
 
   while (1) {
     static struct option long_options[] = {
-        {"read",       required_argument, 0, 'r'},
-        {"write",      required_argument, 0, 'w'},
-        {"verify",     required_argument, 0, 'v'},
-        {"noverify",   no_argument,       0, 'n'},
-        {"erase",      no_argument,       0, 'e'},
-        {"verbose",    optional_argument, 0, 'V'},
-        {"size",       required_argument, 0, 's'},
-        {"addr",       required_argument, 0, 'a'},
-        {"device",     required_argument, 0, 'd'},
-        {"help",       no_argument,       0, 'h'},
-        {0, 0, 0, 0}};
+      {"read",       required_argument, 0, 'r'},
+      {"write",      required_argument, 0, 'w'},
+      {"verify",     required_argument, 0, 'v'},
+      {"noverify",   no_argument,       0, 'n'},
+      {"erase",      no_argument,       0, 'e'},
+      {"verbose",    optional_argument, 0, 'V'},
+      {"size",       required_argument, 0, 's'},
+      {"addr",       required_argument, 0, 'a'},
+      {"device",     required_argument, 0, 'd'},
+      {"help",       no_argument,       0, 'h'},
+      {0, 0, 0, 0}};
+    
+    static char* help[sizeof(long_options)/sizeof(*long_options)-1] = {
+      "read the content of eeprom in file. Must specify size and addr",
+      "write the content of file in eeprom, then verify. Must specify addr",
+      "verify the content of the file with the eeprom. Must specify addr",
+      "skip verification after write",
+      "erase the eeprom (not implemented)",
+      "set verbosity level to arg (0 low, 7 high)",
+      "set reading size",
+      "set starting address",
+      "set serial device",
+      "print this help"
+    };
 
     // int this_option_optind = optind ? optind : 1;
     int option_index = 0;
@@ -390,7 +403,24 @@ int main(int argc, char* argv[]) {
         break;
       
       case 'h':
-        printf("No help\n");
+        printf("Usage: %s options\n\n", argv[0]);
+        for (size_t i = 0; i < sizeof(help)/sizeof(*help); i++) {
+          int space = 0;
+          
+          if (long_options[i].val != 0)
+            space += printf(" -%c ", long_options[i].val);
+          else
+            space += printf("    ");
+          space += printf("--%s", long_options[i].name);
+          if (long_options[i].has_arg == required_argument)
+            space += printf(" arg");
+          else if (long_options[i].has_arg == optional_argument)
+            space += printf(" [arg]");
+
+          printf("%*c", 30-space, ' ');
+          
+          printf("%s\n", help[i]);
+        }
         exit(0);
 
       default:
