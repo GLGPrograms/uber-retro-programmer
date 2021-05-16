@@ -85,6 +85,14 @@ void flash_init(void) {
 	flash_databus_tristate();
 	// CE control is not absolutely necessary...
 	flash_chip_enable();
+	
+	// _delay_ms(100);
+	
+	// flash_disable_protection();
+	
+	// _delay_ms(100);
+	
+
 }
 
 static void flash_output_enable(void) {
@@ -107,9 +115,11 @@ static void flash_setaddr(uint32_t addr) {
 			PORTD &= ~_BV(7);
 		
 		// Shift pulse
-		_delay_us(1);
+		// _delay_us(1);
+		asm("nop\n\rnop");
 		PORTD |= _BV(5);
-		_delay_us(1);
+		asm("nop\n\rnop");
+		// _delay_us(1);
 		PORTD &= ~_BV(5);
 		
 		part <<= 1;
@@ -124,9 +134,11 @@ static void flash_setaddr(uint32_t addr) {
 			PORTD &= ~_BV(7);
 		
 		// Shift pulse
-		_delay_us(1);
+		// _delay_us(1);
+		asm("nop\n\rnop");
 		PORTD |= _BV(5);
-		_delay_us(1);
+		asm("nop\n\rnop");
+		// _delay_us(1);
 		PORTD &= ~_BV(5);
 		
 		part <<= 1;
@@ -138,15 +150,18 @@ static void flash_setaddr(uint32_t addr) {
 		PORTB &= ~_BV(5);
 	
 	// Pulse latch
-	_delay_us(1);
+	// _delay_us(1);
+	asm("nop\n\rnop");
 	PORTD |= _BV(6);
-	_delay_us(1);
+	asm("nop\n\rnop");
+	// _delay_us(1);
 	PORTD &= ~_BV(6);
 }
 
 static void flash_pulse_we(void) {
+	_delay_us(1);
 	PORTD &= ~(_BV(2));
-	_delay_us(100);
+	_delay_us(1);
 	PORTD |= _BV(2);
 }
 
@@ -211,6 +226,20 @@ void flash_write(uint32_t addr, uint8_t data) {
 	PORTC &= ~_BV(5);
 }
 
+// assume only CE, perform single cycle
+void flash_write_fast(uint32_t addr, uint8_t data) {
+	// turn on write led
+	PORTC |= _BV(5);
+
+	flash_output_disable();
+	flash_databus_output(data);
+	flash_setaddr(addr);
+	flash_pulse_we();
+
+	// turn off write led
+	PORTC &= ~_BV(5);
+}
+
 // assume only CE, perform whole cycle
 void flash_writen(uint32_t addr, uint8_t* data, uint32_t len) {
 	// turn on write led
@@ -218,10 +247,9 @@ void flash_writen(uint32_t addr, uint8_t* data, uint32_t len) {
 
 	flash_output_disable();
 
-	flash_read_init();
 	do {
-		flash_databus_output(*(data));
 		flash_setaddr(addr++);
+		flash_databus_output(*(data));
 		flash_pulse_we();
 		data_polling(~*data);
 		data++;
@@ -257,4 +285,49 @@ void flash_select_protocol(uint8_t allowed_protocols) {
 void flash_set_safe(void) {
 	// Turn off power supply
 	// PORTB |= _BV(4);
+}
+
+static void flash_pulse_we_short(void) {
+  PORTD &= ~(_BV(2));
+  PORTD |= _BV(2);
+}
+
+static void flash_write_sync(const uint16_t addr, const uint8_t data) {
+  flash_databus_output(data);
+  flash_setaddr(addr);
+  flash_pulse_we();
+}
+
+void flash_reset_sdp(void) {
+  flash_output_disable();
+
+  flash_write_fast(0x5555, 0xaa);
+  flash_write_fast(0x2aaa, 0x55);
+  flash_write_fast(0x5555, 0x80);
+  flash_write_fast(0x5555, 0xaa);
+  flash_write_fast(0x2aaa, 0x55);
+  flash_write_fast(0x5555, 0x20);
+
+	// turn on leds in sequence
+	PORTC |= _BV(5);
+	PORTC |= _BV(4);
+	_delay_ms(500);
+	PORTC &= ~_BV(4);
+	PORTC &= ~_BV(5);
+}
+
+void flash_set_sdp(void) {
+  flash_output_disable();
+	
+	flash_write_fast(0x5555, 0xaa);
+  flash_write_fast(0x2aaa, 0x55);
+  flash_write_fast(0x5555, 0xa0);
+
+		// turn on leds in sequence
+	PORTC |= _BV(5);
+	PORTC |= _BV(4);
+	_delay_ms(500);
+	PORTC &= ~_BV(4);
+	_delay_ms(500);
+	PORTC &= ~_BV(5);
 }

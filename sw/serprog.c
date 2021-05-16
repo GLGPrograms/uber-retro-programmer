@@ -153,6 +153,13 @@ void timed_read(int fd, uint8_t* data, const uint32_t len) {
 
   print(DEBUG, "Read %d bytes\n", proc);
 
+  if (buf[0] == S_ACK)
+    print(DEBUG, "ACK\n");
+  else if (buf[0] == S_NAK)
+    print(DEBUG, "NAK\n");
+  else
+    print(DEBUG, "WTF: %x\n", buf[0]);
+
   // Remove ack
   memcpy(data, buf+1, len);
   free(buf);
@@ -170,6 +177,17 @@ void op_pgmname(int fd) {
   timed_read(fd, (uint8_t*)pgmname, sizeof(pgmname));
 
   print(INFO, "Successfully connected programmer %.*s\n", sizeof(pgmname), pgmname);
+}
+
+void op_opbuf_init(int fd) {
+  int ret;
+  uint8_t op = S_CMD_O_INIT;
+
+  ret = write(fd, &op, 1);
+  if (ret < 0)
+    longjmp(err, ret);
+
+  timed_read(fd, NULL, 0);
 }
 
 uint16_t op_opbuf_len(int fd) {
@@ -218,6 +236,20 @@ void op_opbuf_write(int fd, const uint32_t ba, const uint8_t* buf, const uint32_
   if (ret < 0)
     longjmp(err, ret);
 
+  timed_read(fd, NULL, 0);
+}
+
+void op_opbuf_sdp(int fd, bool enable) {
+  int ret;
+  uint8_t op = S_CMD_O_RESET_SDP;
+
+  if (enable)
+    op = S_CMD_O_SET_SDP;
+
+  ret = write(fd, &op, 1);
+  if (ret < 0)
+    longjmp(err, ret);
+    
   timed_read(fd, NULL, 0);
 }
 
@@ -301,6 +333,7 @@ void save(const char* filename, const uint8_t* buf, const uint32_t len) {
 int main(int argc, char* argv[]) {
   // Internal flags
   bool rd = false, wr = false, vr = false;
+  bool preunlock = false, postlock = false;
 
   char* serial_port = NULL;
 
@@ -324,6 +357,8 @@ int main(int argc, char* argv[]) {
       {"size",       required_argument, 0, 's'},
       {"addr",       required_argument, 0, 'a'},
       {"device",     required_argument, 0, 'd'},
+      {"unlock",     no_argument,       0, 'U'},
+      {"lock",       no_argument,       0, 'P'},
       {"help",       no_argument,       0, 'h'},
       {0, 0, 0, 0}};
     
@@ -337,12 +372,14 @@ int main(int argc, char* argv[]) {
       "set reading size",
       "set starting address",
       "set serial device",
+      "unlock before",
+      "lock after",
       "print this help"
     };
 
     // int this_option_optind = optind ? optind : 1;
     int option_index = 0;
-    int c = getopt_long(argc, argv, "r:w:v:neVs:a:d:h", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:w:v:neVs:a:d:UPh", long_options, &option_index);
     if (c == -1)
       break;
 
@@ -400,6 +437,14 @@ int main(int argc, char* argv[]) {
       case 'd':
         if (optarg && strlen(optarg))
           serial_port = optarg;
+        break;
+      
+      case 'U':
+        preunlock = true;
+        break;
+
+      case 'P':
+        postlock = true;
         break;
       
       case 'h':
@@ -496,6 +541,7 @@ int main(int argc, char* argv[]) {
 
     // Fetch serial buffer size
     serbuf_len = op_serbuf_len(fd);
+    (void)serbuf_len;
 
     // If erase request
     // TODO
@@ -507,16 +553,24 @@ int main(int argc, char* argv[]) {
     if (rd || vr)
       rbuf = malloc(len);
 
+    if (preunlock) {
+      print(INFO, "Unlocking memory...\n");
+      op_opbuf_sdp(fd, false);
+      op_opbuf_sdp(fd, false);
+      op_opbuf_exec(fd);
+    }
+
     // If write request, do it
     if (wr) {
-      const uint32_t chunk = serbuf_len - 7;
+      // const uint32_t chunk = 64 + 7;
       uint32_t avspace = opbuf_len;
       uint32_t off = 0;
 
       // Split this request in multiple ones to fit opbuf and to avoid
       // uart congestion
       while(off < (uint32_t)len) {
-        uint32_t plen = MIN(MIN(len-off, chunk), avspace - 7);
+        // uint32_t plen = MIN(MIN(len-off, chunk), avspace - 7);
+        const uint32_t plen = 64;
         
         print(DEBUG, "Im' writing size %d at addr %x\n", plen, ba+off);
         op_opbuf_write(fd, ba + off, wbuf + off, plen);
@@ -525,7 +579,7 @@ int main(int argc, char* argv[]) {
         avspace -= (plen + 7);
 
         // No more space available in opbuf, time to commit
-        if (avspace <= 7) {
+        if (avspace < (7 + plen)) {
           op_opbuf_exec(fd);
           print(DEBUG, "Committed opbuf\n");
           avspace = opbuf_len;
@@ -554,6 +608,12 @@ int main(int argc, char* argv[]) {
         else
           print(ERROR, "Failed verification\n", len);
       }
+    }
+    if (postlock) {
+      print(INFO, "Locking memory...\n");
+      op_opbuf_sdp(fd, true);
+      op_opbuf_sdp(fd, true);
+      op_opbuf_exec(fd);
     }
   }
 
