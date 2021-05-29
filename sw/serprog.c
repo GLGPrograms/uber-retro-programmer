@@ -607,11 +607,11 @@ int main(int argc, char* argv[]) {
         avspace -= (plen + 7);
 
         // No more space available in opbuf, time to commit
-        if (avspace < (7 + plen)) {
-          op_opbuf_exec(fd);
-          print(DEBUG, "Committed opbuf\n");
-          avspace = opbuf_len;
-        }
+        // if (avspace < (7 + plen)) {
+        op_opbuf_exec(fd);
+        print(DEBUG, "Committed opbuf\n");
+        avspace = opbuf_len;
+        // }
       }
 
       if (avspace != opbuf_len) {
