@@ -281,6 +281,31 @@ void op_read(int fd, const uint32_t ba, uint8_t* buf, const uint32_t len) {
   timed_read(fd, buf, len);
 }
 
+void op_errorcnt_reset(int fd) {
+  int ret;
+  const uint8_t op = S_CMD_S_ERRORCNT_RESET;
+
+  ret = write(fd, &op, 1);
+  if (ret < 0)
+    longjmp(err, ret);
+    
+  timed_read(fd, NULL, 0);
+}
+
+uint32_t op_errorcnt(int fd) {
+  int ret;
+  const uint8_t op = S_CMD_Q_ERRORCNT;
+  uint32_t errors_cnt;
+
+  ret = write(fd, &op, 1);
+  if (ret < 0)
+    longjmp(err, ret);
+
+  timed_read(fd, (uint8_t*)&errors_cnt, sizeof(errors_cnt));
+
+  return errors_cnt;
+}
+
 bool compare(const uint8_t *a, const uint8_t *b, const int len) {
   for (int i = 0; i < len; i++)
     if (a[i] != b[i])
@@ -543,6 +568,9 @@ int main(int argc, char* argv[]) {
     serbuf_len = op_serbuf_len(fd);
     (void)serbuf_len;
 
+    op_errorcnt_reset(fd);
+    print(INFO, "Write errors: %d\n", op_errorcnt(fd));
+
     // If erase request
     // TODO
 
@@ -552,7 +580,7 @@ int main(int argc, char* argv[]) {
 
     if (rd || vr)
       rbuf = malloc(len);
-
+    
     if (preunlock) {
       print(INFO, "Unlocking memory...\n");
       op_opbuf_sdp(fd, false);
@@ -591,6 +619,8 @@ int main(int argc, char* argv[]) {
         print(DEBUG, "Committed opbuf\n");
         avspace = opbuf_len;
       }
+
+      print(INFO, "Write errors: %d\n", op_errorcnt(fd));
     }
 
     // If read request, do it (read or verify)

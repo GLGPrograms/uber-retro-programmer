@@ -22,6 +22,8 @@
 #include "flash.h"
 #include "uart.h"
 
+static uint32_t errors_cnt = 0;
+
 static uint8_t flash_databus_read(void) {
 	uint8_t rv;
 	rv = (PINB & 0x0F);
@@ -93,6 +95,14 @@ void flash_init(void) {
 	// _delay_ms(100);
 	
 
+}
+
+void flash_error_cnt_reset(void) {
+	errors_cnt = 0;
+}
+
+uint32_t flash_error_cnt() {
+	return errors_cnt;
 }
 
 static void flash_output_enable(void) {
@@ -196,15 +206,15 @@ uint8_t flash_read(uint32_t addr) {
 }
 
 uint8_t data_polling(const uint8_t val) {
-	uint8_t ret = 0;
+	uint8_t ret = 1;
 	_delay_us(1);
 	flash_databus_tristate();
-	for (uint16_t i = 0; i < 500 && ret == 0; i++) {
+	for (uint16_t i = 0; i < 500 && ret != 0; i++) {
 		flash_output_enable();
 		_delay_us(1);
 		uint8_t valid = val ^ flash_databus_read();
 		if (!(valid & 0x80))
-			ret = 1;
+			ret = 0;
 		flash_output_disable();
 		_delay_us(1);
 	}
@@ -220,7 +230,7 @@ void flash_write(uint32_t addr, uint8_t data) {
 	flash_databus_output(data);
 	flash_setaddr(addr);
 	flash_pulse_we();
-	data_polling(~data);
+	errors_cnt += data_polling(~data);
 
 	// turn off write led
 	PORTC &= ~_BV(5);
@@ -251,7 +261,7 @@ void flash_writen(uint32_t addr, uint8_t* data, uint32_t len) {
 		flash_setaddr(addr++);
 		flash_databus_output(*(data));
 		flash_pulse_we();
-		data_polling(~*data);
+		errors_cnt += data_polling(~*data);
 		data++;
 	} while(--len);
 

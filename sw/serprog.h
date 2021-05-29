@@ -25,3 +25,5 @@
 #define S_CMD_S_PIN_STATE	0x15	/* Enable/disable output drivers		*/
 #define S_CMD_O_RESET_SDP	0x19		/* Write to opbuf: reset SDP */
 #define S_CMD_O_SET_SDP		0x1A		/* Write to opbuf: set SDP */
+#define S_CMD_S_ERRORCNT_RESET		0x1B		/* Reset errors counter */
+#define S_CMD_Q_ERRORCNT		0x1C		/* Get number of writing errors */
