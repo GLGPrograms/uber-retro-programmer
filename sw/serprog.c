@@ -306,13 +306,6 @@ uint32_t op_errorcnt(int fd) {
   return errors_cnt;
 }
 
-bool compare(const uint8_t *a, const uint8_t *b, const int len) {
-  for (int i = 0; i < len; i++)
-    if (a[i] != b[i])
-      return 0;
-  return 1;
-}
-
 static void buffer_write(int fd, const uint8_t *wbuf, const int len, const int ba, const uint32_t opbuf_len) {
   // const uint32_t chunk = 64 + 7;
   uint32_t avspace = opbuf_len;
@@ -619,7 +612,7 @@ int main(int argc, char* argv[]) {
       if (g_log_level >= DEBUG)
         hexdump(rbuf, len);
 
-      if (compare(wbuf, rbuf, len))
+      if (0 == memcmp(wbuf, rbuf, len))
         print(INFO, "Erased successfully\n", len);
       else
         print(ERROR, "EEPROM is not blank\n", len);
@@ -656,7 +649,7 @@ int main(int argc, char* argv[]) {
       if (rd) save(rfile, rbuf, len);
 
       if (vr) {
-        if (compare(wbuf, rbuf, len))
+        if (0 == memcmp(wbuf, rbuf, len))
           print(INFO, "Verified successfully\n", len);
         else
           print(ERROR, "Failed verification\n", len);
