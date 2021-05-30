@@ -313,6 +313,40 @@ bool compare(const uint8_t *a, const uint8_t *b, const int len) {
   return 1;
 }
 
+static void buffer_write(int fd, const uint8_t *wbuf, const int len, const int ba, const uint32_t opbuf_len) {
+  // const uint32_t chunk = 64 + 7;
+  uint32_t avspace = opbuf_len;
+  uint32_t off = 0;
+
+  // Split this request in multiple ones to fit opbuf and to avoid
+  // uart congestion
+  while(off < (uint32_t)len) {
+    // uint32_t plen = MIN(MIN(len-off, chunk), avspace - 7);
+    const uint32_t plen = MIN(64, (len-off));
+    
+    print(DEBUG, "Im' writing size %d at addr %x\n", plen, ba+off);
+    op_opbuf_write(fd, ba + off, wbuf + off, plen);
+
+    off += plen;
+    avspace -= (plen + 7);
+
+    // No more space available in opbuf, time to commit
+    // if (avspace < (7 + plen)) {
+    op_opbuf_exec(fd);
+    print(DEBUG, "Committed opbuf\n");
+    avspace = opbuf_len;
+    // }
+  }
+
+  if (avspace != opbuf_len) {
+    op_opbuf_exec(fd);
+    print(DEBUG, "Committed opbuf\n");
+    avspace = opbuf_len;
+  }
+
+  print(INFO, "Write errors: %d\n", op_errorcnt(fd));
+}
+
 void load(const char* filename, uint8_t** buf, uint32_t* len) {
   struct stat st;
   stat(filename, &st);
@@ -358,6 +392,7 @@ void save(const char* filename, const uint8_t* buf, const uint32_t len) {
 int main(int argc, char* argv[]) {
   // Internal flags
   bool rd = false, wr = false, vr = false;
+  bool erase = false;
   bool preunlock = false, postlock = false;
 
   char* serial_port = NULL;
@@ -392,7 +427,7 @@ int main(int argc, char* argv[]) {
       "write the content of file in eeprom, then verify. Must specify addr",
       "verify the content of the file with the eeprom. Must specify addr",
       "skip verification after write",
-      "erase the eeprom (not implemented)",
+      "erase the eeprom (by software, i.e. write FF)",
       "set verbosity level to arg (0 low, 7 high)",
       "set reading size",
       "set starting address",
@@ -429,7 +464,7 @@ int main(int argc, char* argv[]) {
         break;
 
       case 'e':
-        printf("erase");
+        erase = true;
         break;
 
       case 'V':
@@ -514,7 +549,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  if (rd && len < 0) {
+  if ((rd || erase) && len < 0) {
     print(FATAL, "Invalid read length\n");
     exit(-1);
   }
@@ -571,8 +606,27 @@ int main(int argc, char* argv[]) {
     op_errorcnt_reset(fd);
     print(INFO, "Write errors: %d\n", op_errorcnt(fd));
 
-    // If erase request
-    // TODO
+    if (erase) {
+      uint8_t *blank_buffer = malloc(len);
+      uint8_t *rbuf = malloc(len);
+
+      print(INFO, "Erasing device...\n");
+      buffer_write(fd, blank_buffer, len, 0, opbuf_len);
+
+      print(INFO, "Blank checking...\n");
+      op_read(fd, ba, rbuf, len);
+
+      if (g_log_level >= DEBUG)
+        hexdump(rbuf, len);
+
+      if (compare(wbuf, rbuf, len))
+        print(INFO, "Erased successfully\n", len);
+      else
+        print(ERROR, "EEPROM is not blank\n", len);
+
+      free(blank_buffer);
+      free(rbuf);
+    }
 
     if (wr || vr) {
       load(wfile, &wbuf, (uint32_t*)&len);
@@ -584,43 +638,12 @@ int main(int argc, char* argv[]) {
     if (preunlock) {
       print(INFO, "Unlocking memory...\n");
       op_opbuf_sdp(fd, false);
-      op_opbuf_sdp(fd, false);
       op_opbuf_exec(fd);
     }
 
     // If write request, do it
     if (wr) {
-      // const uint32_t chunk = 64 + 7;
-      uint32_t avspace = opbuf_len;
-      uint32_t off = 0;
-
-      // Split this request in multiple ones to fit opbuf and to avoid
-      // uart congestion
-      while(off < (uint32_t)len) {
-        // uint32_t plen = MIN(MIN(len-off, chunk), avspace - 7);
-        const uint32_t plen = 64;
-        
-        print(DEBUG, "Im' writing size %d at addr %x\n", plen, ba+off);
-        op_opbuf_write(fd, ba + off, wbuf + off, plen);
-
-        off += plen;
-        avspace -= (plen + 7);
-
-        // No more space available in opbuf, time to commit
-        // if (avspace < (7 + plen)) {
-        op_opbuf_exec(fd);
-        print(DEBUG, "Committed opbuf\n");
-        avspace = opbuf_len;
-        // }
-      }
-
-      if (avspace != opbuf_len) {
-        op_opbuf_exec(fd);
-        print(DEBUG, "Committed opbuf\n");
-        avspace = opbuf_len;
-      }
-
-      print(INFO, "Write errors: %d\n", op_errorcnt(fd));
+      buffer_write(fd, wbuf, len, ba, opbuf_len);
     }
 
     // If read request, do it (read or verify)
@@ -641,7 +664,6 @@ int main(int argc, char* argv[]) {
     }
     if (postlock) {
       print(INFO, "Locking memory...\n");
-      op_opbuf_sdp(fd, true);
       op_opbuf_sdp(fd, true);
       op_opbuf_exec(fd);
     }
