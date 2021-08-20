@@ -423,8 +423,8 @@ int main(int argc, char* argv[]) {
       "erase the eeprom (by software, i.e. write FF)",
       "set verbosity level to arg (0 low, 7 high)",
       "set reading size",
-      "set starting address",
-      "set serial device",
+      "set starting address (deafult 0)",
+      "set serial device (deafult /dev/ttyUSB0)",
       "unlock before",
       "lock after",
       "print this help"
