@@ -212,8 +212,8 @@ uint8_t data_polling(const uint8_t val) {
 	for (uint16_t i = 0; i < 500 && ret != 0; i++) {
 		flash_output_enable();
 		_delay_us(1);
-		uint8_t valid = val ^ flash_databus_read();
-		if (!(valid & 0x80))
+		uint8_t valid = (val ^ flash_databus_read()) & 0x80;
+		if (valid)
 			ret = 0;
 		flash_output_disable();
 		_delay_us(1);
