@@ -19,8 +19,12 @@ This repository is organized as follows
  |__ docs        --> files related to documentation
 ```
 
-## Assemblaggio della PCB
+After clone, init submodules:
+```
+git submodule update
+````
 
+## PCB Assembly
 
 |Designator      | Description                  | Notes                   |
 |----------------|------------------------------|-------------------------|
@@ -49,9 +53,11 @@ This repository is organized as follows
 
 1. Compile firmware in `fw` folder using the makefile. Change `/dev/ttyXYZ123` with the correct serial port (e.g. /dev/ttyUSB0);
 
-    cd fw
-    make
-    make program AVRDUDEPORT=/dev/ttyXYZ123
+```
+cd fw
+make
+make program AVRDUDEPORT=/dev/ttyXYZ123
+```
 
 1. Move the atmega328 on the ÜRP.
 
