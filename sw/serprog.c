@@ -600,11 +600,13 @@ int main(int argc, char* argv[]) {
     print(INFO, "Write errors: %d\n", op_errorcnt(fd));
 
     if (erase) {
-      uint8_t *blank_buffer = malloc(len);
-      uint8_t *rbuf = malloc(len);
+      wbuf = malloc(len);
+      rbuf = malloc(len);
+
+      memset(wbuf, 0xFF, len);
 
       print(INFO, "Erasing device...\n");
-      buffer_write(fd, blank_buffer, len, 0, opbuf_len);
+      buffer_write(fd, wbuf, len, 0, opbuf_len);
 
       print(INFO, "Blank checking...\n");
       op_read(fd, ba, rbuf, len);
@@ -617,8 +619,9 @@ int main(int argc, char* argv[]) {
       else
         print(ERROR, "EEPROM is not blank\n", len);
 
-      free(blank_buffer);
+      free(wbuf);
       free(rbuf);
+      wbuf = rbuf = NULL;
     }
 
     if (wr || vr) {
@@ -662,7 +665,6 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // TODO copiare dentro la return della setjmp oppure adottare altri stratagemmi
   if (rbuf) free(rbuf);
   if (wbuf) free(wbuf);
 
