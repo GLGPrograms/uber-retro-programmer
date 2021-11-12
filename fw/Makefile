@@ -26,23 +26,24 @@ OBJCOPY=avr-objcopy
 MMCU=atmega328p
 #AVRBINDIR=~/avr-tools/bin/
 AVRDUDEPORT?=/dev/ttyUSB0
-AVRDUDECMD=avrdude -p m328p -c arduino -P $(AVRDUDEPORT) -b 115200
+AVRDUDEBAUD?=115200
+AVRDUDECMD=avrdude -p m328p -c arduino -P $(AVRDUDEPORT) -b $(AVRDUDEBAUD)
 CFLAGS=-mmcu=$(MMCU) -Os -Wl,--relax -fno-inline-small-functions -fno-tree-scev-cprop -frename-registers -Wall -W -pipe -flto -flto-partition=none -fwhole-program
 
 include libfrser/Makefile.frser
 
 all: $(PROJECT).out
 	$(AVRBINDIR)avr-size $(PROJECT).out
- 
+
 $(PROJECT).hex: $(PROJECT).out
 	$(AVRBINDIR)$(OBJCOPY) -j .text -j .data -O ihex $(PROJECT).out $(PROJECT).hex
- 
+
 $(PROJECT).out: $(SOURCES) $(DEPS)
 	$(AVRBINDIR)$(CC) $(CFLAGS) -I./ -o $(PROJECT).out $(SOURCES)
 
 asm: $(SOURCES) $(DEPS)
 	$(AVRBINDIR)$(CC) $(CFLAGS) -S  -I./ -o $(PROJECT).s $(SOURCES)
- 
+
 program: $(PROJECT).hex
 	$(AVRBINDIR)$(AVRDUDECMD) -U flash:w:$(PROJECT).hex
 
