@@ -1,12 +1,20 @@
+use anyhow::{anyhow, Context};
 use clap::{App, Arg, Parser};
-use log;
-use serialport::available_ports;
+use log::debug;
+use log::{self, info};
+use serialport::{available_ports, SerialPort};
 use simple_logger::SimpleLogger;
-use std::process::exit;
+use std::{process::exit, time::Duration};
 
 const BUFFER_LEN: usize = 1024;
 
-fn main() {
+const S_ACK: u8 = 0x06;
+const S_NAK: u8 = 0x15;
+const S_CMD_NOP: u8 = 0x00;
+const S_CMD_Q_PGMNAME: u8 = 0x03;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     SimpleLogger::new().init().unwrap();
     log::info!("serprog");
 
@@ -15,9 +23,9 @@ fn main() {
         .author("giomba <giomba@glgprograms.it>")
         .about("serial programmer ")
         .arg(
-            Arg::new("device")
-                .short('d')
-                .long("device")
+            Arg::new("port")
+                .short('p')
+                .long("port")
                 .about("serial port file")
                 .default_value("/dev/ttyS0")
                 .takes_value(true),
@@ -32,18 +40,18 @@ fn main() {
         )
         .get_matches();
 
-    let serial_ports = match available_ports() {
-        Err(e) => {
-            log::error!("cannot enumerate serial ports on this system");
-            exit(exitcode::UNAVAILABLE)
-        }
-        Ok(r) => r,
-    };
+    // get available serial ports list
+    let serial_ports =
+        available_ports().with_context(|| "cannot enumerate serial ports on this system")?;
 
-    println!("{:#?}", serial_ports);
+    info!("{} serial ports found:", serial_ports.len());
+    for serial_port_info in serial_ports {
+        info!("{}", serial_port_info.port_name);
+    }
 
-    let builder = serialport::new(
-        opts.value_of("device").unwrap(),
+    // build serial port
+    let mut port = serialport::new(
+        opts.value_of("port").unwrap(),
         match opts.value_of("baudrate").unwrap().parse() {
             Ok(r) => r,
             Err(e) => {
@@ -51,21 +59,27 @@ fn main() {
                 exit(exitcode::USAGE)
             }
         },
-    );
-    let mut port = match builder.open() {
-        Err(e) => {
-            log::error!("cannot open serial port: {}", e);
-            exit(exitcode::IOERR);
-        }
-        Ok(r) => r,
-    };
+    )
+    .timeout(Duration::from_millis(5000))
+    .open()
+    .with_context(|| "cannot open serial port")?;
 
-    let mut buffer: [u8; BUFFER_LEN] = [0; BUFFER_LEN];
-    let result = port.read(&mut buffer);
-    if let Err(e) = result {
-        log::error!("cannot read serial port: {}", e);
-        exit(exitcode::IOERR);
-    }
-    let n = result.ok().unwrap();
-    println!("{} bytes available", n);
+    // get eeprom programmer name
+    let programmer_name = get_programmer_name(&mut port).await?;
+    info!("programmer name: {}", programmer_name);
+
+    Ok(())
 }
+
+async fn get_programmer_name(port: &mut Box<dyn SerialPort>) -> anyhow::Result<String> {
+    let obuffer = vec![S_CMD_Q_PGMNAME];
+    let written = port.write(&obuffer)?;
+
+    let mut ibuffer = [0; 17];
+    port.read_exact(&mut ibuffer)?;
+
+    let name = String::from(String::from_utf8_lossy(&ibuffer));
+    Ok(name)
+}
+
+fn read(buffer: &[u8], length: usize) {}
