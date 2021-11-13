@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context};
 use clap::{App, Arg, Parser};
+use indicatif::ProgressBar;
 use log::debug;
 use log::{self, info};
 use serialport::{available_ports, SerialPort};
@@ -33,13 +34,13 @@ async fn main() -> anyhow::Result<()> {
     let opts = App::new("serprog")
         .version("1.0")
         .author("giomba <giomba@glgprograms.it>")
-        .about("serial programmer ")
+        .about("CLI for ÜRP Programmer by Retrofficina GLG")
         .arg(
             Arg::new("port")
                 .short('p')
                 .long("port")
                 .about("serial port file")
-                .default_value("/dev/ttyS0")
+                .default_value("/dev/ttyUSB0")
                 .takes_value(true),
         )
         .arg(
@@ -47,14 +48,38 @@ async fn main() -> anyhow::Result<()> {
                 .short('b')
                 .long("baudrate")
                 .about("serial port baud rate")
-                .default_value("9600")
+                .default_value("38400")
                 .takes_value(true),
+        )
+        .arg(
+            Arg::new("size")
+                .short('s')
+                .long("size")
+                .about("size in bytes")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("read")
+                .short('r')
+                .long("read")
+                .about("read EEPROM to file")
+                .value_name("filename")
+                .takes_value(true)
+                .requires("size"),
+        )
+        .arg(
+            Arg::new("write")
+                .short('w')
+                .long("write")
+                .about("write file to EEPROM")
+                .value_name("filename")
+                .takes_value(true)
+                .requires("size"),
         )
         .get_matches();
 
     // get available serial ports list
-    let serial_ports =
-        available_ports().with_context(|| "cannot enumerate serial ports on this system")?;
+    let serial_ports = available_ports().with_context(|| "cannot enumerate serial ports")?;
 
     info!("{} serial ports found:", serial_ports.len());
     for serial_port_info in serial_ports {
@@ -85,9 +110,33 @@ async fn main() -> anyhow::Result<()> {
 
     info!("succesfully connected to: {}", name);
 
-    let mut chunk = [0; 1024];
-    programmer.get_bytes(0x0, &mut chunk).await?;
-    debug!("read chunck: {:?}", chunk);
+    let pb = ProgressBar::new(100);
+
+    if let Some(filename) = opts.value_of("read") {
+        let size: usize = opts.value_of("size").unwrap().parse()?;
+        println!("reading {} bytes into {}", size, filename);
+
+        let mut data: Vec<u8> = Vec::new();
+        data.resize(size, 0);
+        let mut done = 0;
+        let mut remaining = size;
+        const CHUNK_SIZE: usize = 64;
+        while done < size {
+            let current_chunk_size = if remaining > CHUNK_SIZE {
+                CHUNK_SIZE
+            } else {
+                remaining
+            };
+            programmer
+                .get_bytes(done, &mut data[done..done + current_chunk_size])
+                .await?;
+            let percent = (done as f64 / size as f64 * 100.0) as u64;
+            pb.set_position(percent);
+            remaining -= current_chunk_size;
+            done += current_chunk_size;
+        }
+        pb.finish();
+    }
 
     Ok(())
 }

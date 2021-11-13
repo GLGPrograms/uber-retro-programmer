@@ -13,3 +13,4 @@ exitcode = "1.1.2"
 clap = "3.0.0-beta.5"
 anyhow = "1.0.45"
 tokio = { version = "1.13.0", features = ["full"] }
+indicatif = "0.16.2"
