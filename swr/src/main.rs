@@ -248,18 +248,11 @@ impl Programmer {
 
         let _written = self.port.write(&obuffer)?;
         let _written = self.port.write(data)?;
+        self.recv_with_ack(None).await?;
 
         let obuffer = vec![S_CMD_O_EXEC];
         let _written = self.port.write(&obuffer)?;
         self.recv_with_ack(None).await?;
-
-        thread::sleep(Duration::from_millis(500));
-
-        /*
-        let obuffer = vec![S_CMD_NOP];
-        let _written = self.port.write(&obuffer)?;
-        self.recv_with_ack(None).await?;
-        */
 
         Ok(())
     }
@@ -279,8 +272,6 @@ impl Programmer {
                 .read_exact(data)
                 .with_context(|| format!("not enough data received: {:?}", data))?;
         }
-
-        //debug!("recv: {:?}", data);
 
         Ok(())
     }
