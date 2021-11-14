@@ -8,9 +8,10 @@ use simple_logger::SimpleLogger;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::unix::prelude::FileExt;
+use std::thread;
 use std::{process::exit, time::Duration};
 
-const BUFFER_LEN: usize = 1024;
+const CHUNK_SIZE: usize = 32;
 
 const S_ACK: u8 = 0x06;
 const S_CMD_Q_R_NBYTES: u8 = 0x0a;
@@ -165,7 +166,7 @@ impl Programmer {
 
         let mut ibuffer = [0; 16];
         //self.port.read_exact(&mut ibuffer)?;
-        self.recv_with_ack(&mut ibuffer).await?;
+        self.recv_with_ack(Some(&mut ibuffer)).await?;
 
         let name = String::from(String::from_utf8_lossy(&ibuffer));
         Ok(name)
@@ -174,7 +175,6 @@ impl Programmer {
     async fn read_bytes(&mut self, base: usize, data: &mut [u8]) -> anyhow::Result<()> {
         let mut done = 0;
         let mut remaining = data.len();
-        const CHUNK_SIZE: usize = 64;
 
         self.pb.reset();
         while done < data.len() {
@@ -206,7 +206,7 @@ impl Programmer {
         obuffer[6] = (data.len() >> 16 & 0xff) as u8;
         let _written = self.port.write(&obuffer)?;
 
-        self.recv_with_ack(data).await?;
+        self.recv_with_ack(Some(data)).await?;
 
         Ok(())
     }
@@ -214,7 +214,6 @@ impl Programmer {
     async fn write_bytes(&mut self, base: usize, data: &[u8]) -> anyhow::Result<()> {
         let mut done = 0;
         let mut remaining = data.len();
-        const CHUNK_SIZE: usize = 64;
 
         self.pb.reset();
         while done < data.len() {
@@ -231,6 +230,7 @@ impl Programmer {
             remaining -= current_chunk_size;
             done += current_chunk_size;
         }
+        self.pb.finish();
 
         Ok(())
     }
@@ -251,23 +251,36 @@ impl Programmer {
 
         let obuffer = vec![S_CMD_O_EXEC];
         let _written = self.port.write(&obuffer)?;
+        self.recv_with_ack(None).await?;
+
+        thread::sleep(Duration::from_millis(500));
+
+        /*
+        let obuffer = vec![S_CMD_NOP];
+        let _written = self.port.write(&obuffer)?;
+        self.recv_with_ack(None).await?;
+        */
 
         Ok(())
     }
 
-    async fn recv_with_ack(&mut self, data: &mut [u8]) -> anyhow::Result<()> {
+    async fn recv_with_ack(&mut self, data: Option<&mut [u8]>) -> anyhow::Result<()> {
         let mut ack_buffer = [0; 1];
         self.port
             .read_exact(&mut ack_buffer)
             .with_context(|| "ack not received")?;
 
         if ack_buffer[0] != S_ACK {
-            return Err(anyhow!("received NACK"));
+            return Err(anyhow!(format!("received NACK: {:?}", ack_buffer)));
         }
 
-        self.port
-            .read_exact(data)
-            .with_context(|| "not enough data received")?;
+        if let Some(data) = data {
+            self.port
+                .read_exact(data)
+                .with_context(|| format!("not enough data received: {:?}", data))?;
+        }
+
+        //debug!("recv: {:?}", data);
 
         Ok(())
     }
