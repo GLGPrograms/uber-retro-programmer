@@ -5,6 +5,8 @@ use log::debug;
 use log::{self, info};
 use serialport::{available_ports, SerialPort};
 use simple_logger::SimpleLogger;
+use std::fs::File;
+use std::io::Write;
 use std::os::unix::prelude::FileExt;
 use std::{process::exit, time::Duration};
 
@@ -18,19 +20,24 @@ const S_CMD_Q_PGMNAME: u8 = 0x03;
 
 struct Programmer {
     port: Box<dyn SerialPort>,
+    pb: ProgressBar,
 }
 
 impl Programmer {
     fn new(port: Box<dyn SerialPort>) -> Self {
-        Programmer { port }
+        Programmer {
+            port,
+            pb: ProgressBar::new(100),
+        }
     }
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // start logging utilities
     SimpleLogger::new().init().unwrap();
-    log::info!("serprog");
 
+    // parse command line arguments
     let opts = App::new("serprog")
         .version("1.0")
         .author("giomba <giomba@glgprograms.it>")
@@ -66,6 +73,14 @@ async fn main() -> anyhow::Result<()> {
                 .value_name("filename")
                 .takes_value(true)
                 .requires("size"),
+        )
+        .arg(
+            Arg::new("addr")
+                .short('a')
+                .long("addr")
+                .about("starting address")
+                .default_value("0")
+                .takes_value(true),
         )
         .arg(
             Arg::new("write")
@@ -104,33 +119,25 @@ async fn main() -> anyhow::Result<()> {
 
     info!("succesfully connected to: {}", name);
 
-    let pb = ProgressBar::new(100);
-
+    // if operation is read
     if let Some(filename) = opts.value_of("read") {
+        // parse needed arguments
+        let base = opts.value_of("addr").unwrap().parse()?;
         let size: usize = opts.value_of("size").unwrap().parse()?;
         println!("reading {} bytes into {}", size, filename);
 
+        // read in memory
         let mut data: Vec<u8> = Vec::new();
         data.resize(size, 0);
-        let mut done = 0;
-        let mut remaining = size;
-        const CHUNK_SIZE: usize = 64;
-        while done < size {
-            let current_chunk_size = if remaining > CHUNK_SIZE {
-                CHUNK_SIZE
-            } else {
-                remaining
-            };
-            programmer
-                .get_bytes(done, &mut data[done..done + current_chunk_size])
-                .await?;
-            let percent = (done as f64 / size as f64 * 100.0) as u64;
-            pb.set_position(percent);
-            remaining -= current_chunk_size;
-            done += current_chunk_size;
-        }
-        pb.finish();
+        programmer.read_bytes(base, &mut data).await?;
+
+        let mut file = File::create(filename).with_context(|| "cannot open output file")?;
+        file.write_all(&data)
+            .with_context(|| "cannot write data to file")?;
     }
+
+    // if operation is write
+    // TODO
 
     Ok(())
 }
@@ -149,7 +156,31 @@ impl Programmer {
         Ok(name)
     }
 
-    async fn get_bytes(&mut self, base: usize, data: &mut [u8]) -> anyhow::Result<()> {
+    async fn read_bytes(&mut self, base: usize, data: &mut [u8]) -> anyhow::Result<()> {
+        let mut done = 0;
+        let mut remaining = data.len();
+        const CHUNK_SIZE: usize = 64;
+
+        self.pb.reset();
+        while done < data.len() {
+            let current_chunk_size = if remaining > CHUNK_SIZE {
+                CHUNK_SIZE
+            } else {
+                remaining
+            };
+            self.read_bytes_chunk(base + done, &mut data[done..done + current_chunk_size])
+                .await?;
+            let percent = (done as f64 / data.len() as f64 * 100.0) as u64;
+            self.pb.set_position(percent);
+            remaining -= current_chunk_size;
+            done += current_chunk_size;
+        }
+        self.pb.finish();
+
+        Ok(())
+    }
+
+    async fn read_bytes_chunk(&mut self, base: usize, data: &mut [u8]) -> anyhow::Result<()> {
         let mut obuffer = [0; 7];
         obuffer[0] = S_CMD_Q_R_NBYTES;
         obuffer[1] = (base & 0xff) as u8;
