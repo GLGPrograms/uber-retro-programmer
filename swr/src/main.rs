@@ -89,13 +89,7 @@ async fn main() -> anyhow::Result<()> {
     // build serial port
     let port = serialport::new(
         opts.value_of("port").unwrap(),
-        match opts.value_of("baudrate").unwrap().parse() {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("baudrate: {}", e);
-                exit(exitcode::USAGE)
-            }
-        },
+        opts.value_of("baudrate").unwrap().parse()?,
     )
     .timeout(Duration::from_millis(5000))
     .open()
