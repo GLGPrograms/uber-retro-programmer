@@ -209,11 +209,10 @@ uint8_t data_polling(const uint8_t val) {
 	uint8_t ret = 1;
 	_delay_us(1);
 	flash_databus_tristate();
-	for (uint16_t i = 0; i < 500 && ret != 0; i++) {
+	for (uint16_t i = 0; i < 0xFFFF && ret != 0; i++) {
 		flash_output_enable();
 		_delay_us(1);
-		uint8_t valid = (val ^ flash_databus_read()) & 0x80;
-		if (valid)
+		if (val == flash_databus_read())
 			ret = 0;
 		flash_output_disable();
 		_delay_us(1);
@@ -230,7 +229,7 @@ void flash_write(uint32_t addr, uint8_t data) {
 	flash_databus_output(data);
 	flash_setaddr(addr);
 	flash_pulse_we();
-	errors_cnt += data_polling(~data);
+	errors_cnt += data_polling(data);
 
 	// turn off write led
 	PORTC &= ~_BV(5);
@@ -261,7 +260,7 @@ void flash_writen(uint32_t addr, uint8_t* data, uint32_t len) {
 		flash_setaddr(addr++);
 		flash_databus_output(*(data));
 		flash_pulse_we();
-		errors_cnt += data_polling(~*data);
+		errors_cnt += data_polling(*data);
 		data++;
 	} while(--len);
 
